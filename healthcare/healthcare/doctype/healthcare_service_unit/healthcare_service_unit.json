@@ -193,7 +193,6 @@
    "report_hide": 1
   },
   {
-   "collapsible": 1,
    "fieldname": "tree_details_section",
    "fieldtype": "Section Break",
    "hide_days": 1,
@@ -243,7 +242,7 @@
  ],
  "is_tree": 1,
  "links": [],
- "modified": "2023-04-20 11:43:38.575796",
+ "modified": "2024-07-19 11:02:38.487123",
  "modified_by": "Administrator",
  "module": "Healthcare",
  "name": "Healthcare Service Unit",

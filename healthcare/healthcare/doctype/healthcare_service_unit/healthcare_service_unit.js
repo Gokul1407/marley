@@ -38,11 +38,19 @@ frappe.ui.form.on('Healthcare Service Unit', {
 				}
 			};
 		});
+
+		frm.set_query('parent_healthcare_service_unit', function(){
+			return{
+				filters: {
+					'company': frm.doc.company
+				}
+			};
+		});
 	},
 	set_root_readonly: function(frm) {
 		// read-only for root healthcare service unit
 		frm.set_intro('');
-		if (!frm.doc.parent_healthcare_service_unit) {
+		if (!frm.is_new() && !frm.doc.parent_healthcare_service_unit) {
 			frm.set_read_only();
 			frm.set_intro(__('This is a root healthcare service unit and cannot be edited.'), true);
 		}
