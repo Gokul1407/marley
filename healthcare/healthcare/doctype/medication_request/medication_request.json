@@ -121,7 +121,7 @@
   },
   {
    "allow_on_submit": 1,
-   "default": "Draft",
+   "default": "draft-Medication Request Status",
    "depends_on": "eval:!doc.__islocal",
    "fieldname": "status",
    "fieldtype": "Link",
