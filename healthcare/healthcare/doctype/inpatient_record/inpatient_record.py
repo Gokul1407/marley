@@ -150,6 +150,7 @@ class InpatientRecord(Document):
 					"Inpatient Record Item",
 					{"item_code": inpatient.get("item"), "parent": self.name},
 					["name", "quantity", "invoiced"],
+					order_by="idx DESC",
 					as_dict=True,
 				)
 				uom = 60
@@ -175,16 +176,34 @@ class InpatientRecord(Document):
 					se_child.quantity = quantity
 					se_child.rate = inpatient.rate / inpatient.get("no_of_hours")
 				else:
+					item_total_qty = frappe.db.get_all(
+						"Inpatient Record Item",
+						filters={
+							"item_code": inpatient.get("item"),
+							"parent": self.name,
+							"invoiced": 1,
+						},
+						fields=["sum(quantity) as qty"],
+					)
+					quantity = quantity - (
+						item_total_qty[0].get("qty")
+						if item_total_qty
+						and len(item_total_qty)
+						and item_total_qty[0].get("qty")
+						else 0
+					)
 					if item_row.get("invoiced"):
 						# if invoiced add another row
-						if item_row.get("quantity") and quantity and quantity > item_row.get("quantity"):
+						if quantity:
 							se_child = self.append("items")
 							se_child.item_code = inpatient.get("item")
 							se_child.item_name = item_name
 							se_child.stock_uom = stock_uom
 							se_child.uom = inpatient.get("uom")
-							se_child.quantity = quantity - item_row.get("quantity")
-							se_child.rate = inpatient.rate / inpatient.get("no_of_hours")
+							se_child.quantity = quantity
+							se_child.rate = inpatient.rate / inpatient.get(
+								"no_of_hours"
+							)
 					else:
 						# update existing row in item line if not invoiced
 						if quantity != item_row.get("quantity"):
@@ -637,7 +656,7 @@ def set_item_rate(doc):
 	price_list, price_list_currency = frappe.db.get_values(
 		"Price List", {"selling": 1}, ["name", "currency"]
 	)[0]
-	total_amount = 0
+
 	for item in doc.items:
 		if not item.rate:
 			args = {

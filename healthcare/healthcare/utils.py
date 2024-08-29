@@ -9,6 +9,7 @@ import math
 
 import frappe
 from frappe import _
+from frappe.query_builder import DocType
 from frappe.utils import cint, cstr, flt, get_link_to_form, rounded, time_diff_in_hours
 from frappe.utils.formatters import format_value
 
@@ -257,21 +258,19 @@ def get_clinical_procedures_to_invoice(patient, company):
 def get_inpatient_services_to_invoice(patient, company):
 	services_to_invoice = []
 	if not frappe.db.get_single_value("Healthcare Settings", "automatically_generate_billable"):
-		inpatient_services = frappe.db.sql(
-			"""
-				SELECT
-					io.*
-				FROM
-					`tabInpatient Record` ip, `tabInpatient Occupancy` io
-				WHERE
-					ip.patient=%s
-					and ip.company=%s
-					and io.parent=ip.name
-					and io.left=1
-					and io.invoiced=0
-			""",
-			(patient.name, company),
-			as_dict=1,
+		ip_record = DocType("Inpatient Record")
+		ip_occupancy = DocType("Inpatient Occupancy")
+
+		inpatient_services = (
+			frappe.qb.from_(ip_occupancy)
+			.on(ip_occupancy.parent == ip_record.name)
+			.select(ip_occupancy.star)
+			.where(
+				(ip_record.patient == patient.name)
+				& (ip_record.company == company)
+				& (ip_occupancy.invoiced == 0)
+			)
+			.run(as_dict=True)
 		)
 
 		for inpatient_occupancy in inpatient_services:
@@ -285,21 +284,14 @@ def get_inpatient_services_to_invoice(patient, company):
 				)
 				qty = 0.5
 				if hours_occupied > 0:
-					actual_qty = hours_occupied / service_unit_type.no_of_hours
-					floor = math.floor(actual_qty)
-					decimal_part = actual_qty - floor
-					if decimal_part > 0.5:
-						qty = rounded(floor + 1, 1)
-					elif decimal_part < 0.5 and decimal_part > 0:
-						qty = rounded(floor + 0.5, 1)
-					if qty <= 0:
-						qty = 0.5
+					qty = hours_occupied / service_unit_type.no_of_hours
 				services_to_invoice.append(
 					{
 						"reference_type": "Inpatient Occupancy",
 						"reference_name": inpatient_occupancy.name,
 						"service": service_unit_type.item,
 						"qty": qty,
+						"rate": service_unit_type.rate,
 					}
 				)
 			inpatient_record_doc = frappe.get_doc("Inpatient Record", inpatient_occupancy.parent)
@@ -320,7 +312,7 @@ def get_inpatient_services_to_invoice(patient, company):
 
 		query = (
 			frappe.qb.from_(iri)
-			.select(iri.name, iri.item_code, iri.quantity)
+			.select(iri.name, iri.item_code, iri.quantity, iri.rate)
 			.join(ip)
 			.on(iri.parent == ip.name)
 			.where((ip.patient == patient.name) & (ip.company == company) & (iri.invoiced == 0))
@@ -335,6 +327,7 @@ def get_inpatient_services_to_invoice(patient, company):
 					"reference_name": inpatient_occupancy.name,
 					"service": inpatient_occupancy.item_code,
 					"qty": inpatient_occupancy.quantity,
+					"rate": inpatient_occupancy.rate,
 				}
 			)
 
