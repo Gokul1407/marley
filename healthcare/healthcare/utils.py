@@ -5,11 +5,11 @@
 
 import base64
 import json
-import math
 
 import frappe
 from frappe import _
-from frappe.utils import cint, cstr, flt, get_link_to_form, rounded, time_diff_in_hours
+from frappe.query_builder import DocType
+from frappe.utils import cint, cstr, flt, get_link_to_form, time_diff_in_hours
 from frappe.utils.formatters import format_value
 
 from erpnext.setup.utils import insert_record
@@ -257,21 +257,20 @@ def get_clinical_procedures_to_invoice(patient, company):
 def get_inpatient_services_to_invoice(patient, company):
 	services_to_invoice = []
 	if not frappe.db.get_single_value("Healthcare Settings", "automatically_generate_billable"):
-		inpatient_services = frappe.db.sql(
-			"""
-				SELECT
-					io.*
-				FROM
-					`tabInpatient Record` ip, `tabInpatient Occupancy` io
-				WHERE
-					ip.patient=%s
-					and ip.company=%s
-					and io.parent=ip.name
-					and io.left=1
-					and io.invoiced=0
-			""",
-			(patient.name, company),
-			as_dict=1,
+		ip_record = DocType("Inpatient Record")
+		ip_occupancy = DocType("Inpatient Occupancy")
+
+		inpatient_services = (
+			frappe.qb.from_(ip_occupancy)
+			.join(ip_record)
+			.on(ip_occupancy.parent == ip_record.name)
+			.select(ip_occupancy.star)
+			.where(
+				(ip_record.patient == patient.name)
+				& (ip_record.company == company)
+				& (ip_occupancy.invoiced == 0)
+			)
+			.run(as_dict=True)
 		)
 
 		for inpatient_occupancy in inpatient_services:
@@ -281,19 +280,13 @@ def get_inpatient_services_to_invoice(patient, company):
 			service_unit_type = frappe.get_cached_doc("Healthcare Service Unit Type", service_unit_type)
 			if service_unit_type and service_unit_type.is_billable:
 				hours_occupied = flt(
-					time_diff_in_hours(inpatient_occupancy.check_out, inpatient_occupancy.check_in), 2
+					time_diff_in_hours(inpatient_occupancy.check_out, inpatient_occupancy.check_in)
 				)
 				qty = 0.5
 				if hours_occupied > 0:
-					actual_qty = hours_occupied / service_unit_type.no_of_hours
-					floor = math.floor(actual_qty)
-					decimal_part = actual_qty - floor
-					if decimal_part > 0.5:
-						qty = rounded(floor + 1, 1)
-					elif decimal_part < 0.5 and decimal_part > 0:
-						qty = rounded(floor + 0.5, 1)
-					if qty <= 0:
-						qty = 0.5
+					qty = hours_occupied / service_unit_type.no_of_hours
+				if qty < service_unit_type.minimum_billable_qty:
+					qty = service_unit_type.minimum_billable_qty
 				services_to_invoice.append(
 					{
 						"reference_type": "Inpatient Occupancy",
@@ -313,6 +306,7 @@ def get_inpatient_services_to_invoice(patient, company):
 							"qty": item.quantity,
 						}
 					)
+			inpatient_record_doc.add_service_unit_rent_to_billable_items()
 
 	else:
 		ip = frappe.qb.DocType("Inpatient Record")
