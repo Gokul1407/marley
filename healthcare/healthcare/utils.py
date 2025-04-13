@@ -14,6 +14,7 @@ from frappe.utils.formatters import format_value
 
 from erpnext.setup.utils import insert_record
 
+from healthcare.healthcare.doctype.fee_validity.fee_validity import is_free_follow_up_enabled
 from healthcare.healthcare.doctype.healthcare_settings.healthcare_settings import (
 	get_income_account,
 )
@@ -87,9 +88,12 @@ def get_appointments_to_invoice(patient, company):
 				)
 		# Consultation Appointments, should check fee validity
 		else:
-			if frappe.db.get_single_value(
-				"Healthcare Settings", "enable_free_follow_ups"
-			) and frappe.db.exists("Fee Validity Reference", {"appointment": appointment.name}):
+			enable_free_follow_up = is_free_follow_up_enabled(
+				appointment.practitioner, appointment.department
+			)
+			if enable_free_follow_up and frappe.db.exists(
+				"Fee Validity Reference", {"appointment": appointment.name}
+			):
 				continue  # Skip invoicing, fee validty present
 			practitioner_charge = 0
 			income_account = None
